@@ -10,13 +10,17 @@ description: A blog about technology and stuff related
 external-image: false
 picture: assets/images/profile.jpg
 
+# your site color theme, true for dark theme, 
+# false to light theme, auto to switch with system.
+dark-theme: auto
+
 # If you want to include your resume, set to true
 # and specify source (external or local).
 resume: true
 resume-external: true
-resume-url: https://zety.com/mycv/madushan
+resume-url: https://madushanl.github.io/mycv
 
-url: https://lamahewa.me
+url: https://madushanl.github.io
 # your url: http://USERNAME.github.io
 
 permalink: /:title/
@@ -55,7 +59,7 @@ email: hello@lamahewa.me
 authors:
     madushan:
         name: Madushan Lamahewa
-        bio: Software Engineer
+        bio: Powered by caffeine and dark mode
         external-image: false
         picture: assets/images/profile.jpg
         twitter: MadushanL
@@ -74,6 +78,8 @@ projects: false
 
 # if you don't need "about" or "blog", comment them out below
 about: false
+
+# if you don't need blog, comment the *blog* configs below
 blog: true
 
 # do you want to show the "read time" of the posts?
@@ -94,6 +100,16 @@ show-author: true
 # do you want some animations?
 animation: true
 
+# add default values to specific pages or layouts
+defaults:
+  - scope:
+      path: "" # an empty string here means all files in the project
+      layout: "post"
+    values:
+      # setting all post to not hidden by default,
+      # can be overridden in the front matter for a specific post
+      hidden: false
+
 plugins:
   - jekyll-seo-tag
   - jekyll-gist
@@ -103,3 +119,18 @@ plugins:
 
 jekyll-mentions:
     base_url: https://github.com
+
+compress_html:
+  ignore:
+    envs:
+      - development
+      - stage
+
+exclude:
+  [
+    "README.md",
+    "Gemfile",
+    "Gemfile.lock",
+    "FAQ.md",
+    "vendor",
+  ]
