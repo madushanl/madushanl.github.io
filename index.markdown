@@ -1,6 +1,5 @@
 ---
-# Feel free to add content and custom Front Matter to this file.
-# To modify the layout, see https://jekyllrb.com/docs/themes/#overriding-theme-defaults
-
 layout: home
 ---
+
+Hi, I'm **Madushan Lamahewa** — Senior Backend & Platform Engineer from Colombo, Sri Lanka. I write about backend architecture, Laravel, APIs, and building reliable systems. [About me](/about/).

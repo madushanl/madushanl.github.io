@@ -1,0 +1,126 @@
+---
+# Only the main Sass file needs front matter (the dashes are enough)
+---
+
+// Dracula theme palette (https://draculatheme.com)
+$dracula-background:    #282a36;
+$dracula-current-line:  #44475a;
+$dracula-foreground:    #f8f8f2;
+$dracula-comment:       #6272a4;
+$dracula-cyan:          #8be9fd;
+$dracula-green:        #50fa7b;
+$dracula-orange:        #ffb86c;
+$dracula-pink:          #ff79c6;
+$dracula-purple:        #bd93f9;
+$dracula-red:           #ff5555;
+$dracula-yellow:        #f1fa8c;
+
+// Minima variables mapped to Dracula
+$background-color: $dracula-background !default;
+$text-color: $dracula-foreground !default;
+$brand-color: $dracula-cyan !default;
+$grey-color: $dracula-comment !default;
+$grey-color-light: $dracula-current-line !default;
+
+@import "minima";
+
+// Dracula: code blocks (theme uses hardcoded light colors)
+pre,
+code {
+  background-color: $dracula-current-line !important;
+  border-color: $dracula-comment !important;
+  color: $dracula-foreground;
+}
+
+// Dracula: header and nav
+.site-header {
+  border-top-color: $dracula-purple;
+  border-bottom-color: $dracula-current-line;
+}
+.site-nav .page-link {
+  color: $dracula-foreground;
+}
+.site-title,
+.site-title:visited {
+  color: $dracula-foreground;
+}
+// Dracula: blockquotes and tables
+blockquote {
+  color: $dracula-comment;
+  border-left-color: $dracula-purple;
+}
+table {
+  border-color: $dracula-current-line;
+  color: $dracula-foreground;
+}
+table th {
+  background-color: $dracula-current-line;
+  border-color: $dracula-comment;
+}
+table td {
+  border-color: $dracula-current-line;
+}
+table tr:nth-child(even) {
+  background-color: rgba(68, 71, 90, 0.5);
+}
+
+// Dracula: mobile nav
+@media screen and (max-width: 600px) {
+  .site-nav {
+    background-color: $dracula-background;
+    border-color: $dracula-current-line;
+  }
+  .site-nav .menu-icon > svg {
+    fill: $dracula-foreground;
+  }
+}
+
+// Dracula: post list and links
+.post-link {
+  color: $dracula-foreground;
+  &:visited {
+    color: $dracula-purple;
+  }
+  &:hover {
+    color: $dracula-cyan;
+  }
+}
+a:hover {
+  color: $dracula-cyan;
+}
+
+// Dracula: Rouge syntax highlighting
+.highlight,
+.highlighter-rouge .highlight {
+  background: $dracula-current-line !important;
+  color: $dracula-foreground;
+}
+.highlight .c,  .highlight .cm,  .highlight .c1,  .highlight .cs { color: $dracula-comment; font-style: italic; }
+.highlight .k,  .highlight .kc,  .highlight .kd,  .highlight .kp,  .highlight .kr,  .highlight .kt { color: $dracula-pink; font-weight: bold; }
+.highlight .n,  .highlight .nb,  .highlight .no,  .highlight .ni,  .highlight .nn,  .highlight .nv { color: $dracula-foreground; }
+.highlight .s,  .highlight .s1,  .highlight .s2,  .highlight .sb,  .highlight .sc,  .highlight .sd,  .highlight .se,  .highlight .sh { color: $dracula-yellow; }
+.highlight .m,  .highlight .mi,  .highlight .mf,  .highlight .mh { color: $dracula-purple; }
+.highlight .na, .highlight .nb { color: $dracula-cyan; }
+.highlight .nf, .highlight .nc { color: $dracula-green; }
+.highlight .o { color: $dracula-pink; }
+.highlight .err { color: $dracula-foreground; background: $dracula-red; }
+.highlight .gd { color: $dracula-red; }
+.highlight .gi { color: $dracula-green; }
+.highlight .gu { color: $dracula-comment; }
+.highlight .gt { color: $dracula-red; }
+.highlight .gr { color: $dracula-red; }
+.highlight .gh { color: $dracula-comment; }
+.highlight .go { color: $dracula-comment; }
+.highlight .gp { color: $dracula-cyan; }
+.highlight .gt { color: $dracula-red; }
+
+// Mermaid diagrams (rendered from code.language-mermaid)
+.mermaid {
+  margin: 1.5em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
