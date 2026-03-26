@@ -124,3 +124,25 @@ a:hover {
   max-width: 100%;
   height: auto;
 }
+
+// Accessibility: skip link
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: $dracula-purple;
+  color: $dracula-background;
+  padding: 8px;
+  text-decoration: none;
+  z-index: 100;
+  border-radius: 0 0 4px 0;
+  font-weight: bold;
+}
+.skip-link:focus {
+  top: 0;
+}
+
+// Mobile nav accessibility improvements
+.site-nav .menu-icon {
+  cursor: pointer;
+}

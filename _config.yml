@@ -22,10 +22,12 @@ title: Madushan Lamahewa
 author: Madushan Lamahewa
 email: madushan.lamahewa@gmail.com
 description: >-
-  Senior Backend & Platform Engineer. Laravel, APIs, and production systems
-  for fintech, sustainability, and enterprise. Colombo, Sri Lanka.
+  Writing about code, creativity, and the continuous learning process in the tech industry.
 baseurl: "" # the subpath of your site, e.g. /blog
-url: "" # the base hostname & protocol for your site, e.g. http://example.com
+url: "" # the base hostname & protocol for your site, e.g. https://example.com
+lang: en
+timezone: Asia/Colombo
+
 github_username: madushanl
 linkedin_username: madushanl
 rss: Feed
@@ -39,6 +41,22 @@ minima:
 
 plugins:
   - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+# Default front matter values for posts and pages
+defaults:
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: "post"
+      author: "Madushan Lamahewa"
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "page"
 
 # Exclude from processing.
 # The following items will not be processed, by default.
