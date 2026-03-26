@@ -1,0 +1,31 @@
+name: Jekyll Site CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+
+    - name: Build Jekyll site
+      run: bundle exec jekyll build
+      env:
+        JEKYLL_ENV: production
+
+    - name: Check for broken links (optional)
+      run: |
+        echo "Site built successfully. To add link checking, install htmlproofer:"
+        echo "  gem 'html-proofer' in Gemfile, then run:"
+        echo "  bundle exec htmlproofer ./_site --disable-external"

@@ -4,10 +4,11 @@
   {%- include head.html -%}
 
   <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
 
     {%- include header.html -%}
 
-    <main class="page-content" aria-label="Content">
+    <main id="main-content" class="page-content" aria-label="Content">
       <div class="wrapper">
         {{ content }}
       </div>
@@ -15,6 +16,7 @@
 
     {%- include footer.html -%}
 
+    {%- if page.mermaid -%}
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
       mermaid.initialize({ startOnLoad: false, theme: 'dark' });
@@ -31,6 +33,7 @@
         mermaid.run();
       });
     </script>
+    {%- endif -%}
 
   </body>
 
