@@ -4,6 +4,7 @@ title: "AI Agent Design Patterns"
 date: 2026-03-01 22:17:22 +0530
 categories: ai architecture
 author: Madushan Lamahewa
+mermaid: true
 ---
 
 # AI Agent Design Patterns
