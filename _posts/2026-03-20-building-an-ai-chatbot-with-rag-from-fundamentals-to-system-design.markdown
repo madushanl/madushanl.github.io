@@ -7,8 +7,6 @@ author: Madushan Lamahewa
 mermaid: true
 ---
 
-# Building an AI Chatbot with RAG: From Fundamentals to System Design
-
 *From First Principles to Production-Ready Retrieval-Augmented Generation Systems*
 
 ---
@@ -16,6 +14,8 @@ mermaid: true
 Retrieval-Augmented Generation, or RAG, is one of the most practical ways to build useful AI chatbots. It gives a language model access to external knowledge at the moment a user asks a question, instead of forcing the model to rely only on what it learned during training. That simple change has major consequences: answers can be grounded in your documents, updated when your content changes, and restricted to the information a user is allowed to see.
 
 This article rebuilds RAG from first principles and then walks forward into production system design. It is written for beginners, but it does not flatten the engineering reality. A modern RAG chatbot is not just "embed files and ask an LLM." It is a retrieval system, a prompt construction system, a security boundary, and an evaluation problem operating together.
+
+The article uses classic single-query RAG as the main teaching model because it is the clearest way to understand the architecture. In production, stronger systems often layer query rewriting, query decomposition, multi-query retrieval, or agentic orchestration on top of those same fundamentals.
 
 If you want a stack-specific companion article that explains how to choose concrete tools for each layer, see [RAG System Design with Selected Stack and Demo](/rag/2026/03/25/building-a-rag-chatbot-how-to-choose-each-component-and-why.html).
 
@@ -33,6 +33,8 @@ RAG is an application pattern where a system:
 4. Generates an answer that is grounded in that context.
 
 The external source might be product manuals, a company wiki, support tickets, contracts, policies, database records, or web content. The key idea is that the model answers with help from retrieved evidence instead of relying purely on memory.
+
+RAG works best when the answer can be supported by retrievable context. If the answer depends on live transactional state such as current account balances, inventory, or workflow status, direct tool or database access is usually a better source of truth than an indexed text snapshot alone.
 
 ### Why RAG matters
 
@@ -175,6 +177,17 @@ If you are building a serious RAG chatbot today, hybrid retrieval is usually a b
 
 For an applied example that pairs hybrid retrieval with ChromaDB and a separate keyword layer, see [RAG System Design with Selected Stack and Demo](/rag/2026/03/25/building-a-rag-chatbot-how-to-choose-each-component-and-why.html).
 
+#### Query rewriting and decomposition
+
+Many real user questions are conversational, ambiguous, or multi-part. Before retrieval, a system may:
+
+- Rewrite a vague follow-up into a standalone query
+- Expand abbreviations or synonyms
+- Split a complex question into smaller subqueries
+- Run several retrieval passes and merge the results
+
+This can improve recall, but it introduces a new failure mode: the rewrite can silently drop the exact term that mattered. Error codes, dates, product names, and legal wording are especially easy to damage. In production, keep the original query, log any rewrite or decomposition, and be careful not to lose exact-match signals.
+
 ### Re-ranking
 
 Retrieval normally happens in stages:
@@ -300,9 +313,10 @@ At runtime, the system receives a user question and converts it into a retrieval
 That usually involves:
 
 - Normalizing the query
-- Optionally rewriting or expanding it
+- Optionally rewriting, decomposing, or expanding it while preserving the original
 - Applying permission filters
-- Running hybrid retrieval
+- Running one or more retrieval passes
+- Merging candidate sets
 - Reranking candidates
 - Selecting the final context window
 
@@ -320,6 +334,8 @@ flowchart TD
     I --> J[LLM]
     J --> K[Final Answer with Source Attribution]
 ```
+
+In a simple system, that is a single-query pipeline. In a more advanced system, query understanding may produce multiple subqueries that are executed in parallel and then merged before reranking. The design goal is not to make retrieval look clever. It is to improve recall without losing exact terms, security filters, or debuggability.
 
 ### Stage 5: Generation
 
@@ -460,10 +476,11 @@ In production, do not force a false choice between vector and keyword retrieval.
 
 1. Normalize the user query.
 2. Use conversation history to resolve references like "that policy" or "the last one."
-3. Apply permission filters.
-4. Run hybrid retrieval.
-5. Rerank the top candidates.
-6. Select the final chunks for prompt assembly.
+3. Optionally rewrite or decompose the query, while keeping the original wording available.
+4. Apply permission filters to every retrieval path.
+5. Run hybrid retrieval on one or more queries.
+6. Merge and rerank the top candidates.
+7. Select the final chunks for prompt assembly.
 
 ```mermaid
 flowchart LR
@@ -478,6 +495,8 @@ flowchart LR
 ```
 
 The reason for reranking is simple: first-stage retrieval is fast but imperfect. A reranker helps ensure the model sees the best evidence, not just the fastest approximate matches.
+
+For simple assistants, a single-query pipeline is often enough. For more complex conversational assistants, multi-query retrieval can improve coverage. The practical rule is to treat rewriting and decomposition as controlled optimizations, not invisible magic.
 
 ### Step 8: Assemble the prompt carefully
 
@@ -516,7 +535,12 @@ For knowledge assistants, a correct "I could not find enough evidence in the app
 
 **Why:** RAG quality cannot be judged reliably by intuition alone. Teams often overestimate quality based on a few good demos.
 
-**How:** Evaluate at three levels:
+**How:** Build an evaluation loop:
+
+- Build a representative evaluation set from real user questions, expected answers, and expected sources
+- Review failure cases by stage so you know whether the problem is corpus quality, retrieval, ranking, prompting, or model behavior
+
+Then evaluate at three levels:
 
 - Retrieval quality: did the system retrieve the right chunks?
 - Answer quality: was the response correct, grounded, and complete?
@@ -541,6 +565,10 @@ Human review is still necessary, especially for domain-specific or high-stakes u
 ### Use hybrid retrieval by default
 
 Dense-only retrieval is attractive because it feels modern, but it often underperforms on exact terms. Keyword-only retrieval misses semantic matches. Hybrid search is usually the most reliable baseline.
+
+### Treat query rewriting as a controlled optimization
+
+Rewriting helps with conversational follow-ups, but it can also hurt exact-match recall. Keep the original query, log the rewritten form, and consider searching both when identifiers, dates, or codes matter.
 
 ### Add reranking before generation
 
@@ -585,6 +613,10 @@ If a user gets a bad answer, you need to know whether the problem came from:
 - Model behavior
 
 Without stage-level evaluation, teams often change prompts when the real problem is indexing.
+
+### Build evaluation sets from real user traffic
+
+Synthetic examples are useful for getting started, but they rarely capture the messy language of production users. As soon as possible, create a labeled evaluation set from representative queries, expected evidence, and known failure cases.
 
 ### Keep the ingestion and query paths separate
 
@@ -651,9 +683,10 @@ At scale, the architecture often includes:
 - Queue-based document processing
 - Versioned indexes
 - Separate services for retrieval and generation
+- Query planning or decomposition for complex questions
 - Offline evaluation pipelines
 
-The underlying idea stays the same, but operational discipline becomes much more important.
+The underlying idea stays the same, but operational discipline becomes much more important. Larger systems usually do not abandon classic RAG fundamentals. They add orchestration around them.
 
 ---
 
@@ -677,13 +710,16 @@ Consider alternatives or additions when:
 - You need highly specialized behavior or style that retrieval alone cannot provide
 - A workflow needs tools, agents, or structured execution rather than document Q and A
 
-In practice, modern systems often combine RAG with tools, structured data access, and workflow orchestration. But for knowledge-grounded chatbots, RAG remains the core architecture because it solves the most important problem first: giving the model the right information before it speaks.
+In practice, modern systems often combine RAG with tools, structured data access, query planning, and workflow orchestration. But for knowledge-grounded chatbots, RAG remains the core architecture because it solves the most important problem first: giving the model the right information before it speaks.
 
-## References for Validation
+## Selected References
 
-The architectural choices in this article align with current vendor and research guidance on embeddings, chunking, hybrid retrieval, and semantic reranking:
+The architectural guidance in this article aligns with current vendor and research material on embeddings, chunking, hybrid retrieval, ranking, and RAG system design:
 
-- OpenAI embeddings guide: https://platform.openai.com/docs/guides/embeddings
-- Azure AI Search semantic chunking guidance: https://learn.microsoft.com/en-us/azure/search/search-how-to-semantic-chunking
-- Azure AI Search semantic ranking guidance: https://learn.microsoft.com/en-us/azure/search/search-get-started-semantic
+- OpenAI embeddings guide: https://developers.openai.com/api/docs/guides/embeddings
+- OpenAI embeddings API reference: https://developers.openai.com/api/reference/resources/embeddings
+- Azure AI Search RAG overview: https://learn.microsoft.com/en-us/azure/search/retrieval-augmented-generation-overview
+- Azure AI Search chunking guidance: https://learn.microsoft.com/en-us/azure/search/vector-search-how-to-chunk-documents
+- Azure AI Search structure-aware chunking guidance: https://learn.microsoft.com/en-us/azure/search/search-how-to-semantic-chunking
+- Azure AI Search vector relevance and ranking guidance: https://learn.microsoft.com/en-us/azure/search/vector-search-ranking
 - Original RAG paper by Lewis et al.: https://arxiv.org/abs/2005.11401
