@@ -9,30 +9,31 @@ mermaid: true
 
 # Building a RAG Chatbot: How to Choose Each Component and Why
 
-*A Practical Guide to Selecting and Integrating RAG Pipeline Components*
-
----
+For the phase-by-phase implementation sequence based on this architecture, see *RAG Chatbot Phase-by-Phase Execution Plan*.
 
 Retrieval-Augmented Generation, or RAG, is one of the most practical ways to build a useful AI chatbot. It combines retrieval with generation so the model can answer from external knowledge instead of relying only on training-time memory. That makes the system more current, more controllable, and easier to align with private or domain-specific data.
 
-The hard part is not understanding the basic idea. The hard part is selecting the right components for the pipeline. A real RAG system is made of multiple layers: document ingestion, parsing, chunking, embeddings, storage, retrieval, reranking, and generation. Every one of those layers introduces trade-offs in quality, cost, speed, and engineering complexity.
+The hard part is not understanding the basic idea. The hard part is selecting the right components for the pipeline. A real RAG system is made of multiple layers: application infrastructure, document ingestion, parsing, chunking, embeddings, storage, retrieval, reranking, and generation. Every one of those layers introduces trade-offs in quality, cost, speed, and engineering complexity.
 
 This article starts from the system view of RAG, walks through the major implementation options for each component, and then explains why this project selects the following final stack:
 
-- Document loader: `Docling`
-- Chunking strategy: `Semantic chunking`
+- Architecture posture: `cloud-first architecture developed locally and deployed to AWS`
+- API layer: `FastAPI`
+- Application data: `SQLite for local quick start, PostgreSQL for production`
+- Document loader and parser: `Docling`
+- Chunking strategy: `hierarchical structure-first chunking with token-based sub-chunks`
 - Embedding model: `bge-large-en`
-- Vector database: `ChromaDB`
-- Retrieval strategy: `Hybrid search`
+- Vector database: `Qdrant`
+- Retrieval strategy: `hybrid retrieval using vector search plus BM25`
 - Web scraping tool: `Playwright`
-- Reranking: `ColBERT`
-- LLMs: `Groq GPT-OSS 120B` and `Groq DeepSeek-R1` with runtime toggle support
+- Reranking: `cross-encoder reranker such as bge-reranker`
+- LLM layer: `Groq as the default provider with environment-driven model switching`
 
 The goal here is not just to list tools. It is to show how each choice fits into the full architecture and why it was selected over the alternatives.
 
-For the broader conceptual explanation of how RAG works from first principles through system design, see [Building an AI Chatbot with RAG From Fundamentals to System Design](/rag/2026/03/20/building-an-ai-chatbot-with-rag-from-fundamentals-to-system-design.html).
+The selected stack now reflects a cloud-first design rather than a local-first prototype. That means the system still runs comfortably in local development, but the interfaces, storage choices, and service boundaries are selected so the same design can later move to AWS without structural rework.
 
----
+For the broader conceptual explanation of how RAG works from first principles through system design, see [Building an AI Chatbot with RAG From Fundamentals to System Design](/rag/2026/03/20/building-an-ai-chatbot-with-rag-from-fundamentals-to-system-design.html).
 
 ## 1. What a RAG Chatbot Actually Does
 
@@ -51,8 +52,6 @@ This changes the role of the model. In a healthy RAG system, the model is not th
 That distinction matters because many RAG failures are not generation failures. They are retrieval failures. If the system retrieves weak or irrelevant context, even a strong model will produce a weak answer.
 
 That system-level separation of responsibilities is explained in more depth in [Building an AI Chatbot with RAG From Fundamentals to System Design](/rag/2026/03/20/building-an-ai-chatbot-with-rag-from-fundamentals-to-system-design.html).
-
----
 
 ## 2. Why RAG Systems Need Careful Component Selection
 
@@ -76,21 +75,21 @@ flowchart LR
 
 That is why component selection matters. A good vector database will not fix poor parsing. A good LLM will not fix poor retrieval. A strong reranker cannot recover information that never made it into the index in the first place.
 
----
-
 ## 3. The Full RAG Pipeline
 
 A production-style RAG chatbot usually has two major flows: ingestion and query-time answering.
 
 This section is the stack-specific companion to the architecture discussion in [Building an AI Chatbot with RAG From Fundamentals to System Design](/rag/2026/03/20/building-an-ai-chatbot-with-rag-from-fundamentals-to-system-design.html).
 
+In the selected architecture, ingestion is an offline, source-managed workflow. It builds the context layer ahead of time. Chat requests should only read from prepared indexes and should never trigger crawling, parsing, or embedding work inside `/chat`.
+
 ### Ingestion Pipeline
 
 ```mermaid
 flowchart TD
-    A[Files and Web Pages] --> B[Loader and Parser]
+    A[Websites, Documents, APIs, Manual Inputs] --> B[Loader and Parser]
     B --> C[Clean Text and Metadata]
-    C --> D[Chunking]
+    C --> D[Hierarchical Chunking]
     D --> E[Embeddings]
     E --> F[Vector Index]
     C --> G[Keyword Index]
@@ -102,16 +101,14 @@ flowchart TD
 flowchart TD
     A[User Query] --> B[Hybrid Retrieval]
     B --> C[Candidate Chunks]
-    C --> D[ColBERT Reranking]
+    C --> D[Cross-Encoder Reranking]
     D --> E[Top Context Chunks]
     E --> F[Prompt Assembly]
-    F --> G[LLM]
+    F --> G[Groq LLM]
     G --> H[Grounded Response]
 ```
 
 These flows are tightly connected. Better document parsing improves chunking. Better chunking improves embeddings. Better embeddings improve first-stage retrieval. Better retrieval gives the reranker stronger candidates. Better reranked context gives the model a better chance of producing a correct answer.
-
----
 
 ## 4. Choosing the Document Loader: Why Docling
 
@@ -150,8 +147,6 @@ flowchart LR
 
 For this reason, the loader is not just an ingestion utility. It is a quality gate for the entire RAG pipeline.
 
----
-
 ## 5. Choosing the Web Ingestion Tool: Why Playwright
 
 Some knowledge lives in files. Some lives on websites. Modern websites often render important content through JavaScript, so basic static scraping is not always enough.
@@ -178,11 +173,9 @@ flowchart TD
     D --> E[Clean Text for RAG]
 ```
 
-The trade-off is clear: more capability costs more compute. That means Playwright should be used intentionally for dynamic pages, not as the default for every URL.
+The trade-off is clear: more capability costs more compute. That means Playwright should be used intentionally, with domain restrictions, crawl depth limits, and page filters, not as the default for every possible URL.
 
----
-
-## 6. Choosing the Chunking Strategy: Why Semantic Chunking
+## 6. Choosing the Chunking Strategy: Why Hierarchical Structure-First Chunking
 
 Chunking is one of the highest-impact decisions in a RAG system. If chunks are too small, useful meaning gets split apart. If they are too large, retrieval becomes noisy and prompt cost rises.
 
@@ -191,33 +184,36 @@ Chunking is one of the highest-impact decisions in a RAG system. If chunks are t
 | Strategy | Quality | Complexity | Notes |
 | --- | --- | --- | --- |
 | Fixed-size | Medium | Low | Simple |
-| Recursive | High | Low-Medium | Structured |
-| Token-based | High | Medium | LLM-aligned |
+| Recursive | High | Low-Medium | Good baseline |
+| Token-based | High | Medium | Predictable |
 | Markdown/code-aware | High | Medium | Docs |
 | Semantic | Very High | High | Meaning-based |
-| Structure-based | Very High | Medium | Sections |
+| Hierarchical structure plus token chunking | Very High | Medium | Structured and practical |
 
-`Semantic chunking` is selected because the system is optimized for answer quality, not just implementation convenience. Semantic chunking tries to preserve natural meaning boundaries instead of cutting text at arbitrary token or character counts.
+The selected strategy is hierarchical chunking:
 
-That gives it two major advantages:
+1. split by document structure first
+2. then chunk by token length
 
-- it reduces context fragmentation
-- it improves the chance that retrieved chunks actually contain complete thoughts
+This approach is chosen because it keeps most of the quality advantages of structure-aware chunking while remaining easier to debug, tune, and operate than pure semantic chunking.
+
+In practice, that means:
+
+- preserve headings and section boundaries from the parser
+- create token-based chunks of roughly 400 to 600 tokens
+- use 50 to 100 tokens of overlap
+- attach source-aware metadata such as URL, title, section, and timestamp
 
 ```mermaid
 flowchart LR
-    A[Structured Text] --> B[Semantic Boundary Detection]
-    B --> C[Meaningful Chunks]
-    C --> D[More Relevant Retrieval]
+    A[Structured Text] --> B[Section-Aware Split]
+    B --> C[Token Chunking with Overlap]
+    C --> D[Retrieval-Ready Chunks]
 ```
 
-This choice has a real cost. Semantic chunking is more complex than fixed-size or recursive splitting, and it needs tuning. But for a RAG system where retrieval quality is a priority, that extra complexity is justified.
-
-The best practical interpretation here is not to ignore structure. The parser should first preserve structure, and semantic chunking should operate with that structure in mind. In other words, `Docling` and semantic chunking reinforce each other.
+This is a more production-friendly choice for the current system than pure semantic chunking. It gives deterministic chunk boundaries, works consistently across documents and websites, and makes retrieval debugging easier when quality issues appear.
 
 That relationship between document structure and chunk quality is also discussed conceptually in [Building an AI Chatbot with RAG From Fundamentals to System Design](/rag/2026/03/20/building-an-ai-chatbot-with-rag-from-fundamentals-to-system-design.html).
-
----
 
 ## 7. Choosing the Embedding Model: Why bge-large-en
 
@@ -249,11 +245,9 @@ flowchart TD
     C --> D[Vector Index]
 ```
 
-The trade-off is compute. Larger local embedding models are heavier than smaller alternatives. But since this system is optimizing for retrieval quality while staying self-managed, that is a reasonable exchange.
+The trade-off is compute. Larger local embedding models are heavier than smaller alternatives. But since this system is optimizing for retrieval quality while staying largely self-managed, that is a reasonable exchange.
 
----
-
-## 8. Choosing the Vector Database: Why ChromaDB
+## 8. Choosing the Vector Database: Why Qdrant
 
 Once chunks are embedded, they need to be indexed and retrieved efficiently.
 
@@ -268,24 +262,22 @@ Once chunks are embedded, they need to be indexed and retrieved efficiently.
 | Weaviate | Vector DB | High | High | Free/Paid |
 | pgvector | PostgreSQL extension | Medium | Medium | Low |
 
-`ChromaDB` is selected because it keeps infrastructure simple while still supporting a practical RAG workflow.
+`Qdrant` is selected because the system is now designed as cloud-first rather than local-first. That changes the decision criteria. Local convenience still matters, but production portability matters from the beginning.
 
-It fits this project well because it offers:
+`Qdrant` fits this project well because it offers:
 
-- low setup complexity
-- local-first development
-- enough capacity for prototypes and small-to-medium deployments
-- easy iteration while the retrieval logic is still evolving
+- a local runtime that is still easy to develop against
+- a clean path to Qdrant Cloud or self-hosted production deployment
+- stronger production-oriented vector database behavior than lightweight local-only stores
+- a better match for an AWS-ready architecture
 
 ```mermaid
 flowchart LR
-    A[Embeddings] --> B[ChromaDB]
+    A[Embeddings] --> B[Qdrant]
     B --> C[Similarity Search]
 ```
 
-This is a deliberately pragmatic choice. If the system later needs larger scale, stricter production features, or more advanced distributed behavior, it can move to a system like Qdrant or a managed platform. But that is a scaling decision, not a starting decision.
-
----
+This does not mean the system is aiming at massive scale on day one. It means the selected vector store should not force a redesign later just because the project moves from one laptop to a cloud deployment.
 
 ## 9. Choosing the Retrieval Strategy: Why Hybrid Search
 
@@ -317,19 +309,21 @@ flowchart TD
 
 This matters more than it first appears. A user might ask a conceptual question, an exact-code question, or a mix of both. A dense-only system will miss some exact-match cases. A keyword-only system will miss paraphrased semantic matches. Hybrid retrieval covers both failure modes better.
 
-There is one important engineering caveat here. `ChromaDB` is primarily a vector store, so hybrid retrieval is not simply a switch that turns on automatically. The application will need either:
+There is one important engineering caveat here. `Qdrant` is still primarily the vector side of the retrieval stack. The BM25 side and the merge logic remain application-level responsibilities. That is fully compatible with this architecture, but it means hybrid retrieval should be treated as a deliberate retrieval design, not assumed to come for free from the vector database alone.
 
-- a separate lexical index
-- metadata-assisted keyword retrieval
-- or a custom result-fusion layer
+In the selected pipeline, hybrid retrieval produces a candidate set first. That candidate set then flows into reranking:
 
-That is still compatible with this stack. It just means hybrid retrieval should be treated as an application-layer design choice, not assumed to come for free from the vector database alone.
+```text
+Query
+-> vector retrieval
+-> BM25 retrieval
+-> hybrid merge
+-> top 10 candidates
+```
 
 For the retrieval concepts behind this choice, including semantic, keyword, and hybrid retrieval, see [Building an AI Chatbot with RAG From Fundamentals to System Design](/rag/2026/03/20/building-an-ai-chatbot-with-rag-from-fundamentals-to-system-design.html).
 
----
-
-## 10. Choosing the Reranker: Why ColBERT
+## 10. Choosing the Reranker: Why a Cross-Encoder
 
 First-stage retrieval is optimized for speed, not perfect ranking. That means the best answer may already be present in the candidate set but still be buried behind weaker chunks. This is where reranking becomes valuable.
 
@@ -337,67 +331,72 @@ First-stage retrieval is optimized for speed, not perfect ranking. That means th
 
 | Method | Type | Accuracy | Speed | Cost | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Cross-encoder (MiniLM/BGE) | Neural | High | Medium | Free | Local |
+| Cross-encoder (MiniLM/BGE) | Neural | High | Medium | Free | Local and practical |
 | Cohere Rerank | API | Very High | Medium | Paid | Managed |
-| ColBERT | Late interaction | Very High | Medium-High | Free | Complex |
+| ColBERT | Late interaction | Very High | Medium-High | Free | More complex |
 | LLM reranker | Generative | Highest | Slow | High | Context-aware |
 
-`ColBERT` is selected because the system is emphasizing retrieval quality. Compared with simpler rerankers, ColBERT's late-interaction approach preserves richer token-level matching and often improves precision on hard retrieval problems.
+A cross-encoder reranker, such as `bge-reranker`, is selected because it gives the best balance for the current system:
+
+- better ranking precision than first-stage retrieval alone
+- materially simpler integration than ColBERT
+- a good fit for reranking a small candidate set such as top 10 chunks
+- strong quality for the current low-to-moderate scale target
 
 ```mermaid
 flowchart TD
-    A[Top K Retrieved Chunks] --> B[ColBERT Reranking]
-    B --> C[Top N Final Chunks]
+    A[Top 10 Retrieved Chunks] --> B[Cross-Encoder Reranking]
+    B --> C[Top 3 Final Chunks]
     C --> D[Prompt Context]
 ```
 
-This is one of the more ambitious selections in the stack. ColBERT is not the easiest reranker to integrate, and it is more operationally complex than using a basic cross-encoder. But it is selected here because reranking is where a relatively small increase in complexity can lead to a meaningful increase in answer quality.
-
-If the system later needs a lighter MVP path, a cross-encoder can still be used as a temporary fallback. But the target architecture aims higher on precision, so `ColBERT` is the preferred choice.
+This is a deliberate shift from a more ambitious reranker toward a more production-friendly one. ColBERT can be powerful, but the selected architecture values clean integration, debuggability, and good quality without pulling in unnecessary operational complexity too early.
 
 For the role of reranking in the broader RAG pipeline, see [Building an AI Chatbot with RAG From Fundamentals to System Design](/rag/2026/03/20/building-an-ai-chatbot-with-rag-from-fundamentals-to-system-design.html).
 
----
+## 11. Choosing the LLM Layer: Why Groq with Model Abstraction
 
-## 11. Choosing the LLM Layer: Why Two Groq Models
-
-The final stage is generation. At this point the system has already done the hard work of finding and refining relevant context. The model now needs to answer clearly, stay grounded, and handle different styles of questions.
+The final stage is generation. At this point the system has already done the hard work of finding and refining relevant context. The model now needs to answer clearly, stay grounded, and integrate cleanly into a provider abstraction.
 
 ### LLM Comparison
 
-| Model | Quality | Speed | Cost | Notes |
+| Option | Quality | Speed | Cost | Notes |
 | --- | --- | --- | --- | --- |
 | OpenAI GPT | Very High | Medium | Paid | General |
 | Claude | Very High | Medium | Paid | Safe |
-| Gemini | High | Medium | Paid | Multimodal |
-| Groq GPT-OSS 120B | High | Fast | Low/Free | High throughput |
-| Groq DeepSeek-R1 | High | Fast | Low/Free | Reasoning |
-| Open-source models | Medium-High | Medium | Free | Flexible |
+| Gemini | High | Medium | Paid | Broad ecosystem |
+| Groq-hosted models | High | Fast | Low/Free | Strong serving speed |
+| Self-hosted open models | Medium-High | Variable | Infra cost | Full control |
 
-Instead of selecting a single model, this system uses two:
+The selected strategy is:
 
-- `Groq GPT-OSS 120B` for fast general answering
-- `Groq DeepSeek-R1` for reasoning-heavy queries
+- use `Groq` as the default provider
+- keep the model choice behind an environment-driven abstraction
+- start with a strong default model such as `DeepSeek-R1`
+- keep the system ready to switch models without changing application code
 
-That provides a useful runtime toggle.
+```env
+LLM_PROVIDER=groq
+LLM_MODEL=deepseek-r1
+```
+
+This is a better fit than hardcoding one provider-model pair into the application architecture. The project wants a stable `llm_service` contract first, then model experimentation behind configuration.
+
+That operationally means:
+
+- `Groq` is the default provider
+- model selection stays separate from provider selection
+- streamed and non-streamed generation should both fit behind the same abstraction
 
 ```mermaid
 flowchart TD
-    A[Prompt with Retrieved Context] --> B{Model Toggle}
-    B --> C[Groq GPT-OSS 120B]
-    B --> D[Groq DeepSeek-R1]
-    C --> E[Grounded Answer]
-    D --> E
+    A[Prompt with Retrieved Context] --> B[llm_service Abstraction]
+    B --> C{Configured Provider and Model}
+    C --> D[Groq Default Provider]
+    D --> E[Grounded Answer]
 ```
 
-This is a better fit than forcing one model to handle every situation in the same way. Some questions need quick grounded summarization. Others need more stepwise reasoning or stronger synthesis. The toggle makes that distinction explicit.
-
-The system design should reflect that operationally:
-
-- use `GPT-OSS 120B` as the speed-first default
-- use `DeepSeek-R1` when the query demands more reasoning depth
-
----
+This keeps the application aligned with the execution plan: introduce the provider abstraction early, use Groq by default, and make model switching operational rather than architectural.
 
 ## 12. The Final Selected Architecture
 
@@ -405,32 +404,33 @@ At this point the individual choices can be assembled into one coherent system.
 
 ```mermaid
 flowchart TD
-    A[PDFs, Markdown, HTML, Web Pages] --> B[Docling and Playwright]
-    B --> C[Structured Text and Metadata]
-    C --> D[Semantic Chunking]
-    D --> E[bge-large-en Embeddings]
-    E --> F[ChromaDB Vector Index]
-    C --> G[Keyword Index]
-    H[User Query] --> I[Hybrid Retrieval]
-    F --> I
-    G --> I
-    I --> J[ColBERT Reranking]
-    J --> K[Prompt Assembly]
-    K --> L{Groq Model Toggle}
-    L --> M[GPT-OSS 120B]
-    L --> N[DeepSeek-R1]
-    M --> O[Answer with Sources]
-    N --> O
+    A[Websites, Documents, APIs, Manual Sources] --> B[Source Management and Offline Ingestion]
+    B --> C[Playwright and Docling]
+    C --> D[Structured Text and Metadata]
+    D --> E[Hierarchical Chunking]
+    E --> F[bge-large-en Embeddings]
+    F --> G[Qdrant Vector Index]
+    D --> H[BM25 Keyword Index]
+    I[User Query via FastAPI] --> J[Hybrid Retrieval]
+    G --> J
+    H --> J
+    J --> K[Cross-Encoder Reranking]
+    K --> L[Top 3 Context]
+    L --> M[Prompt Assembly]
+    M --> N[llm_service]
+    N --> O[Groq]
+    O --> P[Answer with Sources]
+    Q[(SQLite local / PostgreSQL production)] --> I
+    R[Optional Raw File Storage\nLocal first, S3 later] --> B
 ```
 
-This architecture is balanced around four goals:
+This architecture is balanced around five goals:
 
 - strong retrieval quality
-- reasonable operational simplicity
+- cloud portability from the beginning
 - low mandatory recurring cost
+- manageable operational complexity
 - flexibility for both files and web content
-
----
 
 ## 13. A Small Demo of the Final System
 
@@ -438,108 +438,106 @@ To make the architecture concrete, here is a small conceptual demo flow. The goa
 
 ### Demo Scenario
 
-Suppose the system ingests:
+Suppose the system registers:
 
-- a PDF handbook through `Docling`
-- a documentation page through `Playwright`
+- a PDF handbook through the document ingestion path
+- a documentation site through a Playwright-based website source
 
-The content is parsed into structured text, split with semantic chunking, embedded with `bge-large-en`, and indexed in `ChromaDB`. A lightweight keyword layer is also maintained so the system can support hybrid retrieval.
+The ingestion workflow runs offline. The content is parsed into structured text, split with hierarchical chunking, embedded with `bge-large-en`, and indexed in `Qdrant`. A BM25-backed lexical layer is also maintained so the system can support hybrid retrieval. Raw documents may be stored temporarily or locally for debugging, but the runtime path depends on parsed content, chunks, and embeddings rather than on raw files.
 
 When a user asks a question, the system:
 
-1. runs dense retrieval against the vector index
-2. runs keyword retrieval against the lexical layer
-3. fuses the result lists into one candidate set
-4. reranks the candidates with `ColBERT`
+1. runs dense retrieval against `Qdrant`
+2. runs BM25 retrieval against the lexical layer
+3. merges the result lists into one candidate set
+4. reranks the candidates with a cross-encoder
 5. builds a grounded prompt from the top chunks
-6. sends the prompt to the selected Groq model
+6. sends the prompt to `Groq` through `llm_service`
 
 That flow looks like this:
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant API as Backend API
-    participant P as Parser Layer
-    participant V as ChromaDB
-    participant K as Keyword Index
-    participant R as ColBERT
-    participant L as Groq LLM
+    participant API as FastAPI Backend
+    participant V as Qdrant
+    participant K as BM25 Index
+    participant R as Cross-Encoder
+    participant L as Groq via llm_service
 
     U->>API: Ask a question
     API->>V: Dense retrieval
     API->>K: Keyword retrieval
     V-->>API: Dense results
     K-->>API: Keyword results
-    API->>R: Send fused candidates
+    API->>R: Send merged candidates
     R-->>API: Return reranked top chunks
     API->>L: Prompt with top context
     L-->>API: Grounded answer
     API-->>U: Response with sources
 ```
 
-The model toggle can be applied at the final call:
-
-- choose `GPT-OSS 120B` when speed matters most
-- choose `DeepSeek-R1` when reasoning quality matters more
-
----
+Because the model layer is configuration-driven, the final call does not hardcode one model forever. The system can keep `Groq` as the default provider while still switching models through environment configuration as evaluation and refinement progress.
 
 ## 14. Why This Combination Works Well Together
 
 The strength of this system is not in any one component. It is in how the components reinforce one another.
 
-`Docling` preserves structure, which improves chunk boundaries. Semantic chunking preserves meaning, which improves embeddings. `bge-large-en` gives the vector layer strong semantic signal. Hybrid retrieval compensates for the limits of dense-only search. `ColBERT` improves precision before generation. The Groq model toggle lets the final generation stage adapt to the query type.
+`FastAPI` plus PostgreSQL-compatible persistence gives the application a production-shaped backbone. SQLite keeps local startup light without changing the ORM model. `Docling` preserves structure, which improves chunk boundaries. Hierarchical chunking turns that structure into stable, retrieval-friendly units. `bge-large-en` gives the dense layer strong semantic signal. `Qdrant` gives the vector layer a better cloud-ready foundation. Hybrid retrieval compensates for the limits of dense-only search. The cross-encoder improves precision before generation. Groq and the `llm_service` abstraction keep the model layer swappable without turning the whole application into provider-specific code.
 
 ```mermaid
 flowchart LR
-    A[Docling] --> B[Better Structure]
-    B --> C[Semantic Chunking]
-    C --> D[Better Chunks]
-    D --> E[bge-large-en]
-    E --> F[Better Dense Retrieval]
-    F --> G[Hybrid Search]
-    G --> H[ColBERT]
-    H --> I[Higher Precision Context]
-    I --> J[Groq LLMs]
-    J --> K[Better Grounded Answers]
+    A[FastAPI and SQLAlchemy] --> B[Cloud-Ready Product Backbone]
+    C[Docling] --> D[Better Structure]
+    D --> E[Hierarchical Chunking]
+    E --> F[Better Chunks]
+    F --> G[bge-large-en]
+    G --> H[Qdrant plus BM25]
+    H --> I[Cross-Encoder]
+    I --> J[Higher Precision Context]
+    J --> K[Groq via llm_service]
+    K --> L[Better Grounded Answers]
 ```
 
 That is the real reason for the final stack. Each component was selected not only because it performs well in isolation, but because it improves the effectiveness of the next layer.
-
----
 
 ## 15. Practical Caveats
 
 This architecture is strong, but it is not magic. A few trade-offs should be explicit.
 
-`ChromaDB` keeps the vector layer simple, but hybrid retrieval will still require extra application logic for the keyword side.
+`Qdrant` gives the vector layer a better production story than a lightweight local-first store, but it is slightly heavier to operate in development.
 
-`ColBERT` improves precision, but it adds implementation complexity. It is a quality-oriented decision, not a simplicity-oriented one.
+Hybrid retrieval improves recall, but it still requires a separate BM25 or lexical layer plus result-fusion logic in the application.
 
-Semantic chunking improves meaning preservation, but it increases ingestion complexity and tuning effort.
+Cross-encoder reranking improves precision, but it adds latency compared with retrieval-only pipelines. That is acceptable here because the target scale is moderate and answer quality matters more than shaving every millisecond.
 
-The two-model Groq setup improves flexibility, but it also means the application should define clear routing rules rather than leaving the toggle as a purely manual decision forever.
+Hierarchical chunking is more operationally stable than pure semantic chunking, but it still needs tuning. Poor chunk boundaries will still damage retrieval quality.
 
-These are acceptable trade-offs because they are aligned with the project goal: build a higher-quality RAG chatbot while staying mostly self-managed and avoiding unnecessary paid infrastructure.
+The Groq-based model layer improves flexibility, but the application still needs clear defaults, retries, timeout handling, and evaluation-driven model choices rather than ad hoc switching.
 
----
+SQLite is useful for local quick start, but it is not the production data layer. That role belongs to PostgreSQL.
+
+Raw document storage should remain an operational convenience, not a design dependency. For a few hundred documents, local storage is enough. S3 only becomes necessary when durability, distributed ingestion, or larger-scale operations justify it.
+
+These are acceptable trade-offs because they are aligned with the project goal: build a higher-quality RAG chatbot that is simple enough to develop locally but production-shaped enough to deploy to AWS later.
 
 ## 16. Final Conclusion
 
-A strong RAG chatbot is not built by choosing a single great model. It is built by selecting the right pipeline.
+A strong RAG chatbot is not built by choosing a single great model. It is built by selecting the right pipeline and the right operational boundaries.
 
 In this design:
 
+- `FastAPI` is selected because the backend should be simple, explicit, and production-ready
+- `SQLite` and `PostgreSQL` are selected together because local development should stay lightweight without changing the production data model
 - `Docling` is selected because data quality starts with structured parsing
 - `Playwright` is selected because modern web content often requires browser rendering
-- `Semantic chunking` is selected because retrieval quality depends on meaningful context boundaries
+- `Hierarchical structure-first chunking` is selected because retrieval quality depends on stable, meaningful context boundaries
 - `bge-large-en` is selected because it offers strong open embedding performance
-- `ChromaDB` is selected because it keeps the vector layer simple and practical
+- `Qdrant` is selected because it provides a better cloud-ready vector layer without giving up local development
 - `Hybrid search` is selected because real user queries need both semantic and lexical matching
-- `ColBERT` is selected because reranking is one of the best leverage points for improving answer quality
-- `Groq GPT-OSS 120B` and `Groq DeepSeek-R1` are selected because the system benefits from both speed-first and reasoning-first generation modes
+- `Cross-encoder reranking` is selected because it materially improves answer precision without the integration complexity of heavier rerankers
+- `Groq` with environment-driven model switching is selected because the model layer should stay fast, swappable, and operationally flexible
 
-The result is a RAG architecture that is coherent, grounded, and practical. More importantly, it is a design where each component has a clear reason for being there.
+The result is a RAG architecture that is coherent, grounded, and practical. More importantly, it is a design where each component has a clear reason for being there and where the overall system matches the current execution plan instead of fighting it.
 
 For the conceptual foundation behind this article's implementation choices, see [Building an AI Chatbot with RAG From Fundamentals to System Design](/rag/2026/03/20/building-an-ai-chatbot-with-rag-from-fundamentals-to-system-design.html).
